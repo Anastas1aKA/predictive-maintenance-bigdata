@@ -26,6 +26,13 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
 
+  producer:
+    build: ./producer
+    depends_on:
+      - kafka
+    environment:
+      - INTERVAL=5
+
   spark-master:
     image: apache/spark:3.5.3
     container_name: spark-master
