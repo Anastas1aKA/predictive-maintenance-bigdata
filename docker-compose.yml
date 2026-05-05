@@ -27,11 +27,13 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
 
   producer:
-    build: ./producer
+    build: .
     depends_on:
       - kafka
     environment:
       - INTERVAL=5
+    volumes:                     
+      - ./data:/app/data         
 
   spark-master:
     image: apache/spark:3.5.3
@@ -89,6 +91,24 @@ services:
       - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+
+  spark-streaming:
+    image: apache/spark:3.5.3
+    container_name: spark-streaming
+    depends_on:
+      - kafka
+      - spark-master
+    environment:
+      SPARK_MODE: client
+    volumes:
+      - ./models:/opt/spark/models
+      - ./streaming:/opt/spark/streaming
+      - ./checkpoint:/opt/spark/checkpoint
+    command: >
+      spark-submit 
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3 
+      --master spark://spark-master:7077
+      /opt/spark/streaming/streaming_app_test.py
 
 volumes:
   influxdb_data:

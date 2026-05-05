@@ -15,7 +15,7 @@ while True:
         print("Kafka not ready, retrying...")
         time.sleep(5)
 
-with open('/app/ai4i2020.csv', 'r') as f:
+with open('/app/data/ai4i2020.csv', 'r') as f:
     lines = f.readlines()
 
 # если есть заголовок — пропустить
