@@ -207,15 +207,9 @@ marimo/_lsp/
 __marimo__/
 
 
-# Данные
-data/*.csv
-data/*.parquet
-
 # Spark чекпоинты
 checkpoint/
 
-# Модели ML
-models/
 
 # Python
 __pycache__/
