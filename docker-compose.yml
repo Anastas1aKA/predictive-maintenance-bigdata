@@ -19,7 +19,8 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
@@ -27,7 +28,9 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
 
   producer:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.producer
     depends_on:
       - kafka
     environment:
@@ -36,7 +39,9 @@ services:
       - ./data:/app/data         
 
   spark-master:
-    image: apache/spark:3.5.3
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
     container_name: spark-master
     environment:
       SPARK_MODE: master
@@ -93,7 +98,9 @@ services:
       - grafana_data:/var/lib/grafana
 
   spark-streaming:
-    image: apache/spark:3.5.3
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
     container_name: spark-streaming
     depends_on:
       - kafka
@@ -104,11 +111,36 @@ services:
       - ./models:/opt/spark/models
       - ./streaming:/opt/spark/streaming
       - ./checkpoint:/opt/spark/checkpoint
+      - ./ivy:/home/spark/.ivy2
     command: >
-      spark-submit 
+      /opt/spark/bin/spark-submit 
       --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3 
       --master spark://spark-master:7077
       /opt/spark/streaming/streaming_app_test.py
+
+  spark-training:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: spark-training
+    depends_on:
+      - kafka
+    environment:
+      SPARK_MODE: client
+    volumes:
+      - ./models:/opt/spark/models
+      - ./data:/opt/spark/data
+      - ./train_model.py:/opt/spark/train_model.py
+    command: >
+      sh -c "
+        echo '🚀 Начинаем обучение модели...' &&
+        /opt/spark/bin/spark-submit 
+        --master local[*]
+        /opt/spark/train_model.py &&
+        echo '✅ Обучение завершено!'
+      "
+    profiles:
+      - training
 
 volumes:
   influxdb_data:

@@ -9,7 +9,7 @@ INTERVAL = int(os.getenv("INTERVAL", 5))
 # ожидание Kafka
 while True:
     try:
-        producer = KafkaProducer(bootstrap_servers='kafka:29092')
+        producer = KafkaProducer(bootstrap_servers='kafka:9092')
         break
     except Exception:
         print("Kafka not ready, retrying...")

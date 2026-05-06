@@ -6,7 +6,7 @@ from pyspark.ml import PipelineModel
 # ========================= НАСТРОЙКИ =========================
 MODEL_PATH = "/opt/spark/models/content/best_model"
 
-KAFKA_BOOTSTRAP = "kafka:29092"
+KAFKA_BOOTSTRAP = "kafka:9092"
 KAFKA_TOPIC = "my-topic"
 
 CHECKPOINT_LOCATION = "/tmp/checkpoint/test_streaming"
@@ -17,8 +17,12 @@ spark = SparkSession.builder \
     .config("spark.sql.streaming.checkpointLocation", CHECKPOINT_LOCATION) \
     .getOrCreate()
 
-model = PipelineModel.load(MODEL_PATH)
-print("✅ Модель успешно загружена!")
+try:
+    model = PipelineModel.load(MODEL_PATH)
+    print("✅ Модель успешно загружена!")
+except Exception as e:
+    print(f"❌ Ошибка загрузки модели: {e}")
+    print("Будем работать без модели")
 
 # ====================== СХЕМА ======================
 schema = StructType([
@@ -40,7 +44,7 @@ raw_df = spark.readStream \
 
 df = raw_df \
     .selectExpr("CAST(value AS STRING) as line") \
-    .select(from_csv(col("line"), schema, {"header": "false", "sep": ","}).alias("data")) \
+    .select(from_csv(col("line"), "`Air temperature [K]` DOUBLE, `Process temperature [K]` DOUBLE, `Rotational speed [rpm]` INT, `Torque [Nm]` DOUBLE, `Tool wear [min]` INT, Timestamp STRING", {"header": "false", "sep": ","}).alias("data")) \
     .select("data.*")
 
 # Приводим Timestamp
@@ -59,23 +63,40 @@ features = [
 input_df = df.select(features)
 
 # Применяем модель
-predictions = model.transform(input_df)
-
-# ====================== ФИНАЛЬНЫЙ ВЫВОД ======================
-final_df = predictions \
-    .withColumn("failure_probability", element_at(col("probability"), 2)) \
-    .withColumn("prediction_label", when(col("prediction") == 1, "FAILURE").otherwise("NORMAL")) \
-    .select(
-        col("Timestamp").alias("time"),                    # ← возвращаем время
-        col("Air temperature [K]").alias("air_temp"),
-        col("Process temperature [K]").alias("process_temp"),
-        col("Rotational speed [rpm]").alias("rot_speed"),
-        col("Torque [Nm]").alias("torque"),
-        col("Tool wear [min]").alias("tool_wear"),
-        col("prediction").alias("prediction"),
-        col("prediction_label"),
-        round(col("failure_probability"), 4).alias("failure_probability")
-    )
+try:
+    predictions = model.transform(input_df)
+    print("✅ Предсказания выполнены!")
+    final_df = predictions \
+        .withColumn("failure_probability", element_at(col("probability"), 2)) \
+        .withColumn("prediction_label", when(col("prediction") == 1, "FAILURE").otherwise("NORMAL")) \
+        .select(
+            current_timestamp().alias("time"),
+            col("`Air temperature [K]`").alias("air_temp"),
+            col("`Process temperature [K]`").alias("process_temp"),
+            col("`Rotational speed [rpm]`").alias("rot_speed"),
+            col("`Torque [Nm]`").alias("torque"),
+            col("`Tool wear [min]`").alias("tool_wear"),
+            col("prediction"),
+            col("prediction_label"),
+            round(col("failure_probability"), 4).alias("failure_probability")
+        )
+except NameError:
+    print("⚠️ Работаем без модели")
+    final_df = input_df \
+        .withColumn("failure_probability", lit(0.5)) \
+        .withColumn("prediction_label", lit("UNKNOWN")) \
+        .withColumn("prediction", lit(0)) \
+        .select(
+            current_timestamp().alias("time"),
+            col("`Air temperature [K]`").alias("air_temp"),
+            col("`Process temperature [K]`").alias("process_temp"),
+            col("`Rotational speed [rpm]`").alias("rot_speed"),
+            col("`Torque [Nm]`").alias("torque"),
+            col("`Tool wear [min]`").alias("tool_wear"),
+            col("prediction"),
+            col("prediction_label"),
+            col("failure_probability")
+        )
 
 # ====================== ВЫВОД В КОНСОЛЬ ======================
 query = final_df.writeStream \
