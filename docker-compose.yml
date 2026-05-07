@@ -57,12 +57,13 @@ services:
     command: sh -c "/opt/spark/sbin/start-master.sh && tail -f /dev/null"
 
   spark-worker:
-    image: apache/spark:3.5.3
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
     container_name: spark-worker
     depends_on:
       - spark-master
     environment:
-      SPARK_MODE: worker
       SPARK_MASTER_URL: spark://spark-master:7077
       SPARK_WORKER_MEMORY: 2G
       SPARK_WORKER_CORES: 2
@@ -70,7 +71,9 @@ services:
       - "8081:8081"
     volumes:
       - ./checkpoint:/opt/spark/checkpoint
-    command: sh -c "/opt/spark/sbin/start-worker.sh spark://spark-master:7077 && tail -f /dev/null"
+      - ./models:/opt/spark/models
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
 
   influxdb:
     image: influxdb:2.7-alpine
@@ -117,30 +120,6 @@ services:
       --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3 
       --master spark://spark-master:7077
       /opt/spark/streaming/streaming_app_test.py
-
-  spark-training:
-    build:
-      context: .
-      dockerfile: Dockerfile.spark
-    container_name: spark-training
-    depends_on:
-      - kafka
-    environment:
-      SPARK_MODE: client
-    volumes:
-      - ./models:/opt/spark/models
-      - ./data:/opt/spark/data
-      - ./train_model.py:/opt/spark/train_model.py
-    command: >
-      sh -c "
-        echo '🚀 Начинаем обучение модели...' &&
-        /opt/spark/bin/spark-submit 
-        --master local[*]
-        /opt/spark/train_model.py &&
-        echo '✅ Обучение завершено!'
-      "
-    profiles:
-      - training
 
 volumes:
   influxdb_data:
