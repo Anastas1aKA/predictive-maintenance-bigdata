@@ -115,6 +115,7 @@ services:
       - ./streaming:/opt/spark/streaming
       - ./checkpoint:/opt/spark/checkpoint
       - ./ivy:/home/spark/.ivy2
+      - ./data:/opt/spark/data
     command: >
       /opt/spark/bin/spark-submit 
       --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3 

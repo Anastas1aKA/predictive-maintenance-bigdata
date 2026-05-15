@@ -226,3 +226,7 @@ venv/
 
 # Docker
 .docker/
+
+
+# БД результатов
+results.db

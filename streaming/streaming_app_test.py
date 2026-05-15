@@ -4,6 +4,8 @@ from pyspark.sql.types import *
 from pyspark.ml.pipeline import PipelineModel
 from pyspark.ml.functions import vector_to_array
 
+import sqlite3
+
 # ========================= НАСТРОЙКИ =========================
 MODEL_PATH = "file:///opt/spark/models/content/best_model_fixed"
 
@@ -93,6 +95,35 @@ def process_batch(batch_df, epoch_id):
     )
 
     result.show(truncate=False)
+
+        # запись в SQLite
+    conn = sqlite3.connect("file:///opt/spark/data/results.db")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            time TEXT,
+            air_temp REAL,
+            process_temp REAL,
+            rot_speed REAL,
+            torque REAL,
+            tool_wear REAL,
+            prediction INTEGER,
+            failure_probability REAL,
+            prediction_label TEXT
+        )
+    """)
+
+    result.toPandas().to_sql(
+        "predictions",
+        conn,
+        if_exists="append",
+        index=False
+    )
+
+    conn.commit()
+    conn.close()
+
+    print(f"Batch {epoch_id} сохранён")
 
 # ====================== STREAM START ======================
 
