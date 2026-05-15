@@ -4,7 +4,9 @@ from pyspark.sql.types import *
 from pyspark.ml.pipeline import PipelineModel
 from pyspark.ml.functions import vector_to_array
 
-import sqlite3
+from influxdb_client import InfluxDBClient, Point, WritePrecision
+from datetime import datetime
+
 
 # ========================= НАСТРОЙКИ =========================
 MODEL_PATH = "file:///opt/spark/models/content/best_model_fixed"
@@ -13,6 +15,15 @@ KAFKA_BOOTSTRAP = "kafka:9092"
 KAFKA_TOPIC = "my-topic"
 
 CHECKPOINT_LOCATION = "/tmp/checkpoint/test_streaming"
+
+
+client = InfluxDBClient(
+    url="http://influxdb:8086",
+    token="my-super-secret-token-123456",
+    org="myorg"
+)
+
+write_api = client.write_api()
 # ============================================================
 
 # Spark Session
@@ -79,7 +90,6 @@ def process_batch(batch_df, epoch_id):
         print("Модель не загружена — пропуск batch")
         return
 
-    # применяем модель к батчу
     pred = model.transform(batch_df)
 
     result = pred.select(
@@ -91,47 +101,44 @@ def process_batch(batch_df, epoch_id):
         col("Tool wear [min]").alias("tool_wear"),
         col("prediction"),
         vector_to_array(col("probability"))[1].alias("failure_probability"),
-        when(col("prediction") == 1, "FAILURE").otherwise("NORMAL").alias("prediction_label")
+        when(col("prediction") == 1, "FAILURE")
+            .otherwise("NORMAL")
+            .alias("prediction_label")
     )
 
     result.show(truncate=False)
 
-        # запись в SQLite
-    conn = sqlite3.connect("file:///opt/spark/data/results.db")
+    rows = result.collect()
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS predictions (
-            time TEXT,
-            air_temp REAL,
-            process_temp REAL,
-            rot_speed REAL,
-            torque REAL,
-            tool_wear REAL,
-            prediction INTEGER,
-            failure_probability REAL,
-            prediction_label TEXT
+    for row in rows:
+
+        point = (
+            Point("machine_metrics")
+            .time(row.time)
+            .field("air_temp", float(row.air_temp))
+            .field("process_temp", float(row.process_temp))
+            .field("rot_speed", float(row.rot_speed))
+            .field("torque", float(row.torque))
+            .field("tool_wear", float(row.tool_wear))
+            .field("prediction", int(row.prediction))
+            .field("failure_probability", float(row.failure_probability))
+            .tag("label", row.prediction_label)
         )
-    """)
 
-    result.toPandas().to_sql(
-        "predictions",
-        conn,
-        if_exists="append",
-        index=False
-    )
-
-    conn.commit()
-    conn.close()
+        write_api.write(
+            bucket="predictions",
+            org="myorg",
+            record=point
+        )
 
     print(f"Batch {epoch_id} сохранён")
 
-# ====================== STREAM START ======================
 
 query = df.writeStream \
     .foreachBatch(process_batch) \
     .outputMode("append") \
+    .option("checkpointLocation", "./checkpoint") \
     .start()
 
-print("Streaming запущен")
-
 query.awaitTermination()
+print("Streaming запущен")
