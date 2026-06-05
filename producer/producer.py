@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from kafka import KafkaProducer
 
-INTERVAL = int(os.getenv("INTERVAL", 5))
+INTERVAL = int(os.getenv("INTERVAL", 30))
 
 # ожидание Kafka
 while True:
@@ -21,8 +21,16 @@ with open('/app/data/ai4i2020.csv', 'r') as f:
 # если есть заголовок — пропустить
 lines = lines[1:]
 
+current_index = 0
+total_rows = len(lines)
+
 while True:
-    row = random.choice(lines).strip().split(',')
+    row = lines[current_index].strip().split(',')
+    
+    #увеличиваем счётчик и сбрасываем, если достигли конца
+    current_index += 1
+    if current_index >= total_rows:
+        current_index = 0  # зацикливание: начинаем сначала
 
     # выбираем нужные столбцы
     filtered = [
